@@ -9,21 +9,33 @@ provider "alicloud" {
 data "alicloud_vpcs" "default" {
   is_default = true
 }
+resource "alicloud_vpc" "default" {
+  count = length(data.alicloud_vpcs.default.ids) > 0 ? 0 : 1
+  cidr_block = "172.16.0.0/12"
+  vpc_name = "test_vpc_007"
+}
+
 data "alicloud_zones" "default" {
   available_resource_creation = "Rds"
   multi                       = true
   enable_details              = true
 }
+
+data "alicloud_vswitches" "default" {
+  is_default = true
+}
+
 resource "alicloud_vswitch" "this" {
-  name              = "postgres_vpc"
-  availability_zone = data.alicloud_zones.default.zones.0.multi_zone_ids.0
-  vpc_id            = data.alicloud_vpcs.default.vpcs.0.id
+  count = length(data.alicloud_vswitches.default.ids) > 0 ? 0 : 1
+  vswitch_name              = "postgres_vpc"
+  zone_id = data.alicloud_zones.default.zones.0.id
+  vpc_id            = length(data.alicloud_vpcs.default.ids) > 0 ?  data.alicloud_vpcs.default.vpcs.0.id : alicloud_vpc.default.0.id
   cidr_block        = cidrsubnet(data.alicloud_vpcs.default.vpcs.0.cidr_block, 4, 15)
 }
 module "security_group" {
   source = "alibaba/security-group/alicloud"
   region = var.region
-  vpc_id = data.alicloud_vpcs.default.ids.0
+  vpc_id = length(data.alicloud_vpcs.default.ids) > 0 ?  data.alicloud_vpcs.default.vpcs.0.id : alicloud_vpc.default.0.id
 }
 locals {
   engine         = "PostgreSQL"
@@ -45,7 +57,7 @@ module "postgres" {
   create_instance      = true
   engine_version       = local.engine_version
   instance_type        = data.alicloud_db_instance_classes.default.instance_classes.0.instance_class
-  vswitch_id           = alicloud_vswitch.this.id
+  vswitch_id           = length(data.alicloud_vswitches.default.ids) > 0 ? data.alicloud_vswitches.default.ids.0 : alicloud_vswitch.this.0.id
   instance_name        = "PostgreSQLInstance"
   instance_storage     = lookup(data.alicloud_db_instance_classes.default.instance_classes.0.storage_range, "min")
   instance_charge_type = "Postpaid"
